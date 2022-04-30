@@ -68,11 +68,21 @@ func (k Keeper) TransmitCreatePairPacket(
 
 // OnRecvCreatePairPacket processes packet reception
 func (k Keeper) OnRecvCreatePairPacket(ctx sdk.Context, packet channeltypes.Packet, data types.CreatePairPacketData) (packetAck types.CreatePairPacketAck, err error) {
+	
 	// validate packet data upon receiving
-	if err := data.ValidateBasic(); err != nil {
-		return packetAck, err
-	}
-
+	// Get an order book index
+  pairIndex := types.OrderBookIndex(packet.SourcePort, packet.SourceChannel, data.SourceDenom, data.TargetDenom)
+  // If an order book is found, return an error
+  _, found := k.GetBuyOrderBook(ctx, pairIndex)
+  if found {
+    return packetAck, errors.New("the pair already exist")
+  }
+  // Create a new buy order book for source and target denoms
+  book := types.NewBuyOrderBook(data.SourceDenom, data.TargetDenom)
+  // Assign order book index
+  book.Index = pairIndex
+  // Save the order book to the store
+  k.SetBuyOrderBook(ctx, book)
 	// TODO: packet reception logic
 
 	return packetAck, nil
@@ -98,7 +108,10 @@ func (k Keeper) OnAcknowledgementCreatePairPacket(ctx sdk.Context, packet channe
 		}
 
 		// TODO: successful acknowledgement logic
-
+		pairIndex := types.OrderBookIndex(packet.SourcePort, packet.SourceChannel, data.SourceDenom, data.TargetDenom)
+		book := types.NewSellOrderBook(data.SourceDenom, data.TargetDenom)
+		book.Index = pairIndex
+		k.SetSellOrderBook(ctx, book)
 		return nil
 	default:
 		// The counter-party module doesn't implement the correct acknowledgment format
